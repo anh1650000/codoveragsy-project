@@ -1,0 +1,16 @@
+{
+  "file": "hd_001.pdf",
+  "template": "T1",
+  "scenario": "CLEAN",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty TNHH An Phát",
+    "party_b_tax_code": "0310000001",
+    "party_b_legal_representative": "Nguyễn Minh Anh",
+    "contract_value": 500000000,
+    "effective_date": "2026-04-02",
+    "payment_terms": "Bên A thanh toán trong vòng 15 ngày kể từ ngày nghiệm thu."
+  },
+  "expected_overall_result": "CLEAN",
+  "expected_audit_error_types": []
+}

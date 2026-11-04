@@ -1,0 +1,18 @@
+{
+  "file": "hd_012.docx",
+  "template": "T3",
+  "scenario": "MISSING_FIELD",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty Cổ phần Bình Minh",
+    "party_b_tax_code": null,
+    "party_b_legal_representative": "Trần Quốc Bảo",
+    "contract_value": 500000000,
+    "effective_date": "2026-07-13",
+    "payment_terms": "Thời hạn thanh toán: 30 ngày từ khi nhận đủ hồ sơ."
+  },
+  "expected_overall_result": "NEEDS_REVIEW",
+  "expected_audit_error_types": [
+    "NEEDS_HUMAN_REVIEW"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "file": "hd_007.pdf",
+  "template": "T1",
+  "scenario": "OVER_LIMIT",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty TNHH Hưng Thịnh",
+    "party_b_tax_code": "0310000007",
+    "party_b_legal_representative": "Bùi Thanh Tâm",
+    "contract_value": 1450000000,
+    "effective_date": "2026-10-08",
+    "payment_terms": "Bên A thanh toán trong vòng 15 ngày kể từ ngày nghiệm thu."
+  },
+  "expected_overall_result": "DISCREPANCY_FOUND",
+  "expected_audit_error_types": [
+    "VALUE_OVER_LIMIT"
+  ]
+}

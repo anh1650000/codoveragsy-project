@@ -1,0 +1,18 @@
+{
+  "file": "hd_010.docx",
+  "template": "T1",
+  "scenario": "UNKNOWN_ENTITY",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty TNHH Sao Biển",
+    "party_b_tax_code": "0399999999",
+    "party_b_legal_representative": "Mai Hoàng Phúc",
+    "contract_value": 500000000,
+    "effective_date": "2026-05-11",
+    "payment_terms": "Bên A thanh toán trong vòng 15 ngày kể từ ngày nghiệm thu."
+  },
+  "expected_overall_result": "DISCREPANCY_FOUND",
+  "expected_audit_error_types": [
+    "ENTITY_NOT_FOUND"
+  ]
+}

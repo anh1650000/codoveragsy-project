@@ -1,0 +1,18 @@
+{
+  "file": "hd_006.docx",
+  "template": "T3",
+  "scenario": "WRONG_REPRESENTATIVE",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty Cổ phần Gia Hưng",
+    "party_b_tax_code": "0310000006",
+    "party_b_legal_representative": "Lâm Quốc Khánh",
+    "contract_value": 500000000,
+    "effective_date": "2026-09-07",
+    "payment_terms": "Thời hạn thanh toán: 30 ngày từ khi nhận đủ hồ sơ."
+  },
+  "expected_overall_result": "DISCREPANCY_FOUND",
+  "expected_audit_error_types": [
+    "IDENTITY_MISMATCH"
+  ]
+}

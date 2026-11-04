@@ -1,0 +1,18 @@
+{
+  "file": "hd_003.pdf",
+  "template": "T3",
+  "scenario": "WRONG_TAX_CODE",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty TNHH Cửu Long",
+    "party_b_tax_code": "0390000003",
+    "party_b_legal_representative": "Lê Thu Hà",
+    "contract_value": 500000000,
+    "effective_date": "2026-06-04",
+    "payment_terms": "Thời hạn thanh toán: 30 ngày từ khi nhận đủ hồ sơ."
+  },
+  "expected_overall_result": "DISCREPANCY_FOUND",
+  "expected_audit_error_types": [
+    "IDENTITY_MISMATCH"
+  ]
+}

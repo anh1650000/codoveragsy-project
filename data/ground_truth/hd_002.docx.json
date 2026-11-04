@@ -1,0 +1,16 @@
+{
+  "file": "hd_002.docx",
+  "template": "T2",
+  "scenario": "CLEAN",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty Cổ phần Bình Minh",
+    "party_b_tax_code": "0310000002",
+    "party_b_legal_representative": "Trần Quốc Bảo",
+    "contract_value": 500000000,
+    "effective_date": "2026-05-03",
+    "payment_terms": "Thanh toán thành hai đợt sau khi bàn giao và nghiệm thu."
+  },
+  "expected_overall_result": "CLEAN",
+  "expected_audit_error_types": []
+}

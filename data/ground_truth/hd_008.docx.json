@@ -1,0 +1,18 @@
+{
+  "file": "hd_008.docx",
+  "template": "T2",
+  "scenario": "OVER_LIMIT",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty Cổ phần Kim Thành",
+    "party_b_tax_code": "0310000008",
+    "party_b_legal_representative": "Đỗ Hải Yến",
+    "contract_value": 4250000000,
+    "effective_date": "2026-03-09",
+    "payment_terms": "Thanh toán thành hai đợt sau khi bàn giao và nghiệm thu."
+  },
+  "expected_overall_result": "DISCREPANCY_FOUND",
+  "expected_audit_error_types": [
+    "VALUE_OVER_LIMIT"
+  ]
+}

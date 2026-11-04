@@ -1,0 +1,18 @@
+{
+  "file": "hd_004.docx",
+  "template": "T1",
+  "scenario": "WRONG_TAX_CODE",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty Cổ phần Đại Việt",
+    "party_b_tax_code": "0390000004",
+    "party_b_legal_representative": "Phạm Hoàng Long",
+    "contract_value": 500000000,
+    "effective_date": "2026-07-05",
+    "payment_terms": "Bên A thanh toán trong vòng 15 ngày kể từ ngày nghiệm thu."
+  },
+  "expected_overall_result": "DISCREPANCY_FOUND",
+  "expected_audit_error_types": [
+    "IDENTITY_MISMATCH"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "file": "hd_005.pdf",
+  "template": "T2",
+  "scenario": "WRONG_REPRESENTATIVE",
+  "fields": {
+    "party_a_name": "Công ty TNHH Giải pháp Mekong",
+    "party_b_name": "Công ty TNHH Đông Á",
+    "party_b_tax_code": "0310000005",
+    "party_b_legal_representative": "Nguyễn Văn Lạ",
+    "contract_value": 500000000,
+    "effective_date": "2026-08-06",
+    "payment_terms": "Thanh toán thành hai đợt sau khi bàn giao và nghiệm thu."
+  },
+  "expected_overall_result": "DISCREPANCY_FOUND",
+  "expected_audit_error_types": [
+    "IDENTITY_MISMATCH"
+  ]
+}
