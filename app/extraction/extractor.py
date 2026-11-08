@@ -1,6 +1,7 @@
 """Gọi model, xác thực JSON bằng Pydantic và thử lại lỗi cấu trúc có giới hạn."""
 
 import json
+import re
 from collections.abc import Sequence
 
 from openai import OpenAI
@@ -19,13 +20,22 @@ class ExtractionError(RuntimeError):
         self.raw_outputs = raw_outputs
 
 
+def _clean_json_text(text: str) -> str:
+    """Lọc bỏ các khối markdown ```json nếu mô hình trả về kèm định dạng."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned.strip()
+
+
 def extract_fields(
     chunks: Sequence[dict[str, int | None | str]],
     client: OpenAI | None = None,
     model: str | None = None,
     max_retries: int = 2,
 ) -> tuple[RawExtraction, list[str]]:
-    """Trả về schema đã kiểm tra và output từng lần gọi, gồm tối đa hai lần retry."""
+    """Gọi LLM và xác thực JSON với Pydantic, hỗ trợ retry tối đa max_retries lần."""
     if max_retries < 0:
         raise ValueError("max_retries không được âm")
     llm_client = client or get_llm_client()
@@ -43,7 +53,8 @@ def extract_fields(
         raw_output = response.choices[0].message.content or ""
         raw_outputs.append(raw_output)
         try:
-            parsed_json = json.loads(raw_output)
+            cleaned = _clean_json_text(raw_output)
+            parsed_json = json.loads(cleaned)
             return RawExtraction.model_validate(parsed_json), raw_outputs
         except (json.JSONDecodeError, ValidationError) as error:
             validation_error = str(error)

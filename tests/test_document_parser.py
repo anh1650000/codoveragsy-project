@@ -34,3 +34,20 @@ def test_parse_document_rejects_unsupported_extension(tmp_path):
 
     with pytest.raises(ValueError, match="không được hỗ trợ"):
         parse_document(unsupported)
+
+
+def test_parse_document_raises_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        parse_document(ROOT / "data" / "contracts" / "non_existent_file.pdf")
+
+
+def test_parse_empty_docx_raises_value_error(tmp_path):
+    from docx import Document
+
+    empty_docx = tmp_path / "empty.docx"
+    doc = Document()
+    doc.save(empty_docx)
+
+    with pytest.raises(ValueError, match="không có đoạn văn bản đọc được"):
+        parse_document(empty_docx)
+

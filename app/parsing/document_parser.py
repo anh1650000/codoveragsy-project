@@ -27,8 +27,12 @@ def _parse_pdf(path: Path) -> list[dict[str, int | None | str]]:
             page_text = page.extract_text()
             if not page_text:
                 continue
-            # PDF thường không lưu ranh giới đoạn như DOCX; mỗi dòng trích được
-            # là một đoạn gần đúng, nhỏ để giữ vị trí trang cho việc truy nguồn.
+            # Cách chia chunk cho PDF:
+            # File PDF lưu trữ ký tự theo tọa độ hình học (x, y) trên từng trang cố định,
+            # không có cấu trúc đoạn văn ngữ nghĩa như file DOCX.
+            # Do đó, ta tách theo từng dòng (splitlines) để tạo các chunk nhỏ gọn,
+            # vừa giữ được số trang (page_number) chính xác để CitationVerifier định vị,
+            # vừa tránh chunk quá dài làm giảm độ chính xác khi so khớp mờ (fuzzy match).
             for paragraph in page_text.splitlines():
                 text = paragraph.strip()
                 if text:
@@ -43,8 +47,12 @@ def _parse_pdf(path: Path) -> list[dict[str, int | None | str]]:
 def _parse_docx(path: Path) -> list[dict[str, int | None | str]]:
     chunks: list[dict[str, int | None | str]] = []
     document = Document(path)
-    # DOCX có các paragraph rõ ràng; mỗi đoạn là một chunk độc lập. Trang để
-    # None vì phân trang phụ thuộc trình soạn thảo và không cố định trong DOCX.
+    # Cách chia chunk cho DOCX:
+    # File DOCX sử dụng định dạng OpenXML bố cục dòng chảy (flow layout).
+    # Khái niệm "trang" không tồn tại cố định trong file DOCX mà phụ thuộc vào
+    # cỡ chữ, lề giấy và phần mềm hiển thị (Word/LibreOffice), do đó gán page = None.
+    # Ngược lại, DOCX có cấu trúc đoạn (paragraph) rất rõ ràng trong XML,
+    # nên ta lấy mỗi paragraph không rỗng làm một chunk độc lập theo đúng ngữ nghĩa.
     for paragraph in document.paragraphs:
         text = paragraph.text.strip()
         if text:

@@ -9,4 +9,5 @@ __pycache__/
 data/uploads/
 data/ollama/
 data/runs/
+data/test_tmp/
 *.log

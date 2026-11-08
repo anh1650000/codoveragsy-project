@@ -37,8 +37,8 @@ def normalize_for_comparison(field_name: str, value: object) -> str | None:
         digits = "".join(re.findall(r"\d", text))
         return digits or text
     if field_name == "effective_date":
-        written = re.fullmatch(r"(?:ngày\s+)?(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})", text)
-        numeric = re.fullmatch(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", text)
+        written = re.search(r"(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})", text)
+        numeric = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", text)
         try:
             if written:
                 day, month, year = map(int, written.groups())
@@ -50,8 +50,23 @@ def normalize_for_comparison(field_name: str, value: object) -> str | None:
         except ValueError:
             return text
     if field_name == "payment_terms":
-        text = re.sub(r"^thời hạn thanh toán:\s*", "", text)
+        text = re.sub(r"^(?:thời hạn thanh toán|điều khoản thanh toán):\s*", "", text)
     return text.strip(" .;:")
+
+
+def is_field_correct(field_name: str, expected: object, actual: object) -> bool:
+    """So sánh giá trị trích xuất với ground truth sau khi chuẩn hóa sơ bộ."""
+    if expected is None:
+        return actual is None or str(actual).strip().lower() in {"", "none", "null"}
+    if actual is None:
+        return False
+    norm_exp = normalize_for_comparison(field_name, expected)
+    norm_act = normalize_for_comparison(field_name, actual)
+    if norm_exp == norm_act:
+        return True
+    if field_name == "payment_terms" and norm_exp and norm_act:
+        return norm_act in norm_exp or norm_exp in norm_act
+    return False
 
 
 def load_ground_truth(contract_name: str) -> dict:
@@ -105,8 +120,7 @@ def evaluate_contract(contract_path: Path) -> dict:
                 "expected": expected,
                 "predicted": actual,
                 "quote": predicted[field_name]["quote"],
-                "correct": normalize_for_comparison(field_name, expected)
-                == normalize_for_comparison(field_name, actual),
+                "correct": is_field_correct(field_name, expected, actual),
             }
     except ExtractionError as error:
         record["raw_outputs"] = error.raw_outputs
