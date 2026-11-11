@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 """Schema Pydantic cho dữ liệu trích xuất thô từ hợp đồng."""
 
 from pydantic import BaseModel, ConfigDict, field_validator
+from enum import Enum
 
 
 class ExtractedField(BaseModel):
@@ -54,3 +55,24 @@ class RawExtraction(BaseModel):
         if v is None:
             return {"value": None, "quote": None}
         return v
+
+
+class FieldStatus(str, Enum):
+    """Trạng thái kiểm chứng trích dẫn bằng code cho từng trường."""
+
+    VERIFIED = "VERIFIED"
+    QUOTE_NOT_FOUND = "QUOTE_NOT_FOUND"
+    VALUE_NOT_IN_QUOTE = "VALUE_NOT_IN_QUOTE"
+    NOT_PRESENT = "NOT_PRESENT"
+
+
+class VerifiedField(BaseModel):
+    """Kết quả đầu ra của CitationVerifier cho một trường thông tin."""
+
+    name: str
+    value: str | None
+    quote: str | None
+    status: FieldStatus
+    match_score: float | None
+    page: int | None
+    chunk_id: int | None
