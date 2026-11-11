@@ -11,3 +11,6 @@ data/ollama/
 data/runs/
 data/test_tmp/
 *.log
+WEEKLY_PROMPTS.md
+README_w1.md
+AGENTS.md
