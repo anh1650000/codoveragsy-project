@@ -32,12 +32,12 @@ Chưa viết code. Mình sẽ giao việc của tuần tiếp theo sau.
 Việc cần làm:
 1. Khởi tạo cấu trúc thư mục theo mục 4 của AGENTS.md, requirements.txt, .gitignore, .env.example.
 2. Viết scripts/check_llm_speed.py: gọi model qua client tương thích OpenAI (đọc LLM_BASE_URL, LLM_MODEL từ .env), đo thời gian và số token/giây với một prompt trích xuất mẫu. Hướng dẫn mình chạy và đọc kết quả. Máy mình chạy được model nào thì mình báo lại.
-3. docker-compose.yml với postgres và ollama (chưa cần api/streamlit). Hướng dẫn pull model `frob/qwen3.5-instruct:4b`.
+3. docker-compose.yml chỉ chạy postgres; Ollama cài và chạy native trên máy chính, không thêm Ollama vào Compose. Hướng dẫn kiểm tra/pull model `frob/qwen3.5-instruct:4b`.
 4. Schema PostgreSQL đúng mục 5 (SQLAlchemy models + cách tạo bảng), và app/db/seed.py nạp 8-10 công ty giả vào master_entities.
 5. scripts/generate_dataset.py theo mục 11: 3 template, sinh 12-15 hợp đồng (DOCX + PDF có text layer) phủ đủ 6 kịch bản, kèm ground truth JSON. Dữ liệu công ty trong hợp đồng phải khớp/lệch với seed đúng theo từng kịch bản.
 
 Không làm: parser, extraction, agent, API.
-Kiểm chứng: docker compose up chạy được postgres + ollama; seed xong query được dữ liệu; mở thử 2-3 file PDF sinh ra để chắc chắn copy được chữ tiếng Việt.
+Kiểm chứng: `docker compose up -d postgres` chạy được PostgreSQL; kiểm tra Ollama riêng bằng `ollama list`; seed xong query được dữ liệu; mở thử 2-3 file PDF sinh ra để chắc chắn copy được chữ tiếng Việt.
 Xong thì báo cáo theo mục 13.
 ```
 
@@ -140,7 +140,7 @@ Bạn phải tự giải thích được: vì sao đối soát không dùng LLM;
 
 Việc cần làm:
 1. ui/streamlit_app.py tối thiểu: màn upload (gọi API), hiển thị trạng thái xử lý (polling); màn kết quả: overall_result, bảng các field (tô đỏ field sai lệch / cần review), bấm vào field xem quote nguồn và vị trí (page/chunk).
-2. Dockerfile cho api và ui, cập nhật docker-compose.yml để chạy toàn bộ (api, postgres, ollama, streamlit) bằng một lệnh. Chạy seed tự động hoặc có lệnh rõ ràng.
+2. Dockerfile cho api và ui, cập nhật docker-compose.yml để chạy api, postgres và streamlit bằng một lệnh. Ollama vẫn chạy native trên máy chính; API container gọi Ollama qua `http://host.docker.internal:11434/v1`. Chạy seed tự động hoặc có lệnh rõ ràng.
 3. Nháp README: mô tả bài toán 2-3 câu, sơ đồ kiến trúc, hướng dẫn chạy, mục Known Limitations (PDF scan, một loại tài liệu, chưa xử lý hàng loạt). Chừa trống mục "Design Decisions" cho mình tự viết.
 
 Không làm: thêm tính năng ngoài UI tối thiểu.
@@ -203,6 +203,30 @@ Không refactor thứ không liên quan. Sau khi sửa, chạy lại test liên 
 Mình sắp phải giải thích phần [tên module/file] khi phỏng vấn.
 Hãy hỏi mình 5 câu về thiết kế và quyết định kỹ thuật của phần này, từng câu một, đợi mình trả lời rồi mới góp ý và hỏi câu tiếp.
 Chỉ ra chỗ mình trả lời sai hoặc thiếu so với code thật trong repo.
+```
+
+---
+
+## D. Prompt phần mở rộng sau Tuần 8 (Token offset và multi-agent)
+
+```
+Đọc AGENTS.md và docs/ROADMAP.md, đặc biệt mục 16 của AGENTS.md và mục 6 của ROADMAP.md.
+Chỉ làm phần mở rộng sau khi roadmap Tuần 1-8 đã hoàn thành và baseline được lưu.
+
+Phạm vi:
+1. CitationVerifier: giữ character offset làm vị trí chuẩn; bổ sung lexical token offset theo định nghĩa ở AGENTS.md, với `token_start`/`token_end` optional trong VerifiedField và kết quả báo cáo/API. Không thêm thư viện tokenization. Test tiếng Việt, MST/số tiền, dấu câu, khoảng trắng và quote qua ranh giới chunk.
+2. Tách extraction thành hai agent LLM dùng cùng Qwen/client, gọi tuần tự:
+   - party_extraction_agent: party_a_name, party_b_name, party_b_tax_code, party_b_legal_representative.
+   - contract_terms_extraction_agent: contract_value, effective_date, payment_terms.
+3. Dùng LangGraph điều phối và ghép đầu ra bằng code có kiểm tra field ownership. Retry chỉ gọi agent sở hữu field lỗi, tối đa MAX_RETRIES; ghi trace riêng cho agent, merge và retry.
+4. Không dùng LLM để kiểm tra citation hoặc quyết định reconciliation. Không chạy agent song song; không thêm model/dependency ngoài phạm vi đã duyệt.
+5. Viết test mock cho thứ tự agent, kết quả merge, field thiếu/lỗi, retry đúng agent và giới hạn retry.
+6. So sánh một-agent baseline với hai-agent extraction trên cùng tập DEV: accuracy từng field và latency. Báo số thật, không khẳng định multi-agent tốt hơn nếu kết quả không chứng minh điều đó.
+7. Chạy test cũ và mới; cập nhật sơ đồ, README và tài liệu giải thích kiến trúc.
+
+Không làm: OCR, xử lý batch, agent LLM verifier/reconciliation, chạy model song song, hoặc thay đổi đặc tả này mà chưa hỏi.
+Trước khi sửa code, báo ngắn kế hoạch và các file dự kiến sửa. Nếu roadmap Tuần 1-8 chưa hoàn tất hoặc baseline chưa có, dừng và báo rõ.
+Xong thì báo cáo theo mục 13 của AGENTS.md.
 ```
 
 **Review code trước khi commit:**

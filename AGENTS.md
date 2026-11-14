@@ -430,4 +430,30 @@ Sinh bằng `scripts/generate_dataset.py` để **ground truth luôn chính xác
 
 ## 15. Ngoài phạm vi (không làm, kể cả khi "dễ làm thêm")
 
-OCR cho PDF scan, xử lý hàng loạt nhiều file cùng lúc, Celery/Redis, multi-agent, fine-tune model, đăng nhập/phân quyền, nhiều loại tài liệu ngoài hợp đồng, giao diện phức tạp ngoài Streamlit tối thiểu.
+OCR cho PDF scan, xử lý hàng loạt nhiều file cùng lúc, Celery/Redis, fine-tune model, đăng nhập/phân quyền, nhiều loại tài liệu ngoài hợp đồng, giao diện phức tạp ngoài Streamlit tối thiểu.
+
+## 16. Phần mở rộng được duyệt sau roadmap
+
+Sau khi hoàn thành và kiểm thử các đầu ra Tuần 1-8, bổ sung hai nội dung sau. Đây là phần mở rộng có giới hạn; không thay thế các quyết định ở mục 14.
+
+### 16.1 Ánh xạ token offset
+
+- Giữ character offset làm vị trí chuẩn để cắt văn bản và ánh xạ về `chunk_id`/`page`.
+- Định nghĩa lexical token là một chuỗi ký tự Unicode gồm chữ hoặc số liên tiếp sau chuẩn hóa; dấu câu và khoảng trắng là ranh giới, không phải token. Đây **không** phải token ID/subword của Qwen.
+- Từ khoảng character offset do RapidFuzz tìm được, tính chỉ số token đầu/cuối tương ứng trên toàn văn đã chuẩn hóa. Chỉ số token dùng quy ước 0-based, khoảng nửa mở `[token_start, token_end)`.
+- Thêm `token_start` và `token_end` dạng optional vào `VerifiedField`/kết quả báo cáo; giữ nguyên character offset nội bộ và không làm thay đổi `chunk_id`/`page`.
+- Không thêm thư viện tokenization chỉ để tạo token offset.
+- Test với tiếng Việt có dấu, số tiền/MST, dấu câu, nhiều khoảng trắng và quote qua ranh giới chunk; bảo đảm vị trí chunk/trang hiện có không đổi.
+
+### 16.2 Multi-agent extraction tuần tự
+
+- Dùng cùng model Qwen, cùng module client tương thích OpenAI và cùng cấu hình `.env`; không thêm model hoặc agent bên ngoài.
+- Tạo hai agent trích xuất có vai trò, prompt, tập field và schema đầu ra tách biệt:
+  - `party_extraction_agent`: `party_a_name`, `party_b_name`, `party_b_tax_code`, `party_b_legal_representative`.
+  - `contract_terms_extraction_agent`: `contract_value`, `effective_date`, `payment_terms`.
+- Mỗi agent chỉ trích xuất các field được giao. LangGraph gọi hai agent **tuần tự** để phù hợp giới hạn 4GB VRAM, sau đó ghép kết quả thành `RawExtraction` bằng code có kiểm tra field bắt buộc và không ghi đè nhầm field.
+- Retry chỉ gọi agent phụ trách các field lỗi; vẫn giới hạn bởi `MAX_RETRIES`.
+- CitationVerifier tiếp tục kiểm tra bằng code thuần. Reconciliation tiếp tục dùng quy tắc/code thuần; không giao verify hoặc kết luận đối soát cho LLM.
+- Ghi trace riêng cho mỗi agent, lượt retry, kết quả ghép và quyết định rẽ nhánh.
+- Dùng LLM giả để test thứ tự gọi, schema/field ownership, ghép kết quả, retry đúng agent và giới hạn retry.
+- So sánh cấu hình extraction một agent với hai agent trên cùng tập DEV: độ chính xác từng field và thời gian xử lý. Báo số đo thật; không mặc định multi-agent tốt hơn.

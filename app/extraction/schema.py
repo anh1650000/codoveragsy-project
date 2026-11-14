@@ -1,12 +1,9 @@
-"""Schema Pydantic cho dữ liệu trích xuất thô từ hợp đồng."""
+"""Schema Pydantic cho dữ liệu trích xuất, kiểm chứng và đối soát hợp đồng."""
 
-from pydantic import BaseModel, ConfigDict
-
-
-"""Schema Pydantic cho dữ liệu trích xuất thô từ hợp đồng."""
+from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from enum import Enum
 
 
 class ExtractedField(BaseModel):
@@ -76,3 +73,26 @@ class VerifiedField(BaseModel):
     match_score: float | None
     page: int | None
     chunk_id: int | None
+
+
+# Các trường bắt buộc theo mục 6 của AGENTS.md; nếu thiếu (NOT_PRESENT) phải chuyển người duyệt.
+REQUIRED_FIELDS: tuple[str, ...] = (
+    "party_b_name",
+    "party_b_tax_code",
+    "contract_value",
+)
+
+
+class AuditItem(BaseModel):
+    """Một cảnh báo sai lệch hoặc yêu cầu kiểm tra thủ công trong quá trình thẩm định."""
+
+    error_type: Literal[
+        "ENTITY_NOT_FOUND",
+        "IDENTITY_MISMATCH",
+        "VALUE_OVER_LIMIT",
+        "NEEDS_HUMAN_REVIEW",
+    ]
+    field_name: str | None = None
+    extracted_value: str | None = None
+    expected_value: str | None = None
+    detail: str

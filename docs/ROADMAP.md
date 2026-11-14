@@ -173,8 +173,8 @@
 | Trễ tiến độ | Cắt UI về mức tối thiểu hoặc demo bằng Swagger; không cắt verifier, đối soát và evaluation vì đó là phần cốt lõi |
 | Chất lượng hợp đồng mẫu thấp, mẫu quá giống nhau | Thêm đa dạng mẫu ở tuần 7 (khác bố cục, khác cách viết số tiền/ngày) |
 
-## 4. Ngoài phạm vi (ghi vào báo cáo mục Hạn chế)
-PDF scan/ảnh cần OCR, xử lý hàng loạt nhiều file đồng thời, multi-agent, fine-tune model, phân quyền người dùng.
+## 4. Ngoài phạm vi của Tuần 1-8 (ghi vào báo cáo mục Hạn chế)
+PDF scan/ảnh cần OCR, xử lý hàng loạt nhiều file đồng thời, fine-tune model, phân quyền người dùng. Multi-agent extraction chỉ được xem xét trong phần mở rộng sau Tuần 8 ở mục 6; không đưa vào các tuần 1-8.
 
 ---
 
@@ -191,4 +191,34 @@ PDF scan/ảnh cần OCR, xử lý hàng loạt nhiều file đồng thời, mul
 - [ ] README đầy đủ (Design Decisions, Known Limitations), demo video 2-3 phút.
 - [ ] Báo cáo 5 chương đủ sơ đồ, slide 15-20 trang.
 - [ ] Tự giải thích được toàn bộ luồng và từng quyết định thiết kế trong dưới 3 phút.
+
+## 6. Phần mở rộng sau Tuần 8: Token offset và multi-agent extraction
+
+Chỉ bắt đầu sau khi hoàn thành, chạy test và lưu baseline cho roadmap Tuần 1-8. Đây là phần mở rộng, không thay các nguyên tắc verifier/reconciliation đã chốt.
+
+### 6.1 Token offset
+
+- Giữ character offset làm vị trí chuẩn để trích đoạn nguồn và ánh xạ `chunk_id`/`page`.
+- Dùng lexical token: một chuỗi ký tự Unicode gồm chữ hoặc số liên tiếp sau chuẩn hóa; dấu câu và khoảng trắng là ranh giới. Token offset ở đây không phải token ID/subword của Qwen.
+- Ánh xạ character span từ RapidFuzz sang chỉ số token 0-based, khoảng nửa mở `[token_start, token_end)` trên toàn văn chuẩn hóa; không làm thay đổi kết quả định vị chunk/trang.
+- Thêm `token_start`/`token_end` optional vào `VerifiedField` và kết quả báo cáo/API; tiếp tục giữ character offset nội bộ.
+- Không thêm thư viện chỉ để tách lexical token.
+- Bổ sung unit test cho tiếng Việt có dấu, MST/số tiền, dấu câu, khoảng trắng bất thường và quote qua ranh giới chunk.
+
+### 6.2 Multi-agent extraction dùng chung Qwen
+
+- Tái sử dụng model Qwen, OpenAI-compatible client và cấu hình hiện có; không gọi model song song do giới hạn 4GB VRAM.
+- Tạo hai agent LLM chuyên trách, có prompt/schema/output field ownership riêng:
+  1. `party_extraction_agent`: tên Bên A/Bên B, MST Bên B, người đại diện Bên B.
+  2. `contract_terms_extraction_agent`: giá trị hợp đồng, ngày hiệu lực, điều khoản thanh toán.
+- LangGraph gọi tuần tự hai agent, ghép kết quả bằng code thành `RawExtraction`, rồi chuyển sang CitationVerifier hiện có.
+- Khi retry, chỉ gọi lại agent sở hữu field lỗi; tôn trọng `MAX_RETRIES`. Verifier và reconciliation vẫn là code thuần, không dùng agent LLM để kiểm tra hoặc kết luận.
+- Thêm trace cho từng agent và bước ghép kết quả. Dùng mock để test thứ tự, ghép field, lỗi/thiếu field và retry có giới hạn.
+- So sánh một-agent baseline với hai-agent extraction trên cùng tập DEV: độ chính xác từng field và thời gian xử lý. Báo cáo số đo thực tế, kể cả khi hai agent chậm hơn hoặc không cải thiện.
+
+### Điều kiện hoàn thành phần mở rộng
+
+- Toàn bộ test cũ vẫn pass và test mới bao phủ token mapping, agent routing, merge và retry.
+- Chạy được graph trên hợp đồng mẫu với Ollama thật; lưu cấu hình model/tag và số liệu thời gian.
+- Cập nhật sơ đồ kiến trúc, StateGraph, README và báo cáo để phân biệt rõ agent LLM với node xử lý bằng code.
 
