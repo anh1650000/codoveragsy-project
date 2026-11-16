@@ -4,10 +4,13 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.agent.state import ContractAuditState
 from app.core.config import get_setting
+from app.db.seed_data import MASTER_ENTITIES
 from app.extraction.extractor import extract_fields, extract_retry_fields
 from app.extraction.schema import (
     REQUIRED_FIELDS,
@@ -19,6 +22,7 @@ from app.extraction.schema import (
 )
 from app.guardrails.citation_verifier import EXTRACTION_FIELD_NAMES, CitationVerifier
 from app.parsing.document_parser import parse_document
+from app.reconciliation.engine import MasterEntityLike, ReconciliationEngine
 
 # Hai trạng thái lỗi trích dẫn kích hoạt retry (và chuyển NEEDS_HUMAN_REVIEW nếu hết lượt).
 FAILED_VERIFY_STATUSES: frozenset[FieldStatus] = frozenset(
@@ -32,6 +36,22 @@ ParserFn = Callable[[str | Path], list[dict]]
 ExtractorFn = Callable[[Sequence[dict]], RawExtraction]
 RetryExtractorFn = Callable[[Sequence[dict], Sequence[VerifiedField]], dict[str, ExtractedField]]
 VerifierFn = Callable[[RawExtraction, Sequence[dict]], list[VerifiedField]]
+MasterEntitiesProviderFn = Callable[[], Sequence[MasterEntityLike]]
+
+
+def _default_seed_master_entities() -> list[MasterEntityLike]:
+    """Chuyển danh mục SEED_MASTER_ENTITIES sang các đối tượng hỗ trợ truy cập thuộc tính."""
+    return [
+        SimpleNamespace(
+            vat_code=item["vat_code"],
+            company_name=item["company_name"],
+            legal_representative=item.get("legal_representative"),
+            max_contract_value=Decimal(str(item["max_contract_value"]))
+            if item.get("max_contract_value") is not None
+            else None,
+        )
+        for item in MASTER_ENTITIES
+    ]
 
 
 def _parse_bool_setting(name: str, default: bool) -> bool:
@@ -178,6 +198,9 @@ def build_nodes(
     extractor: ExtractorFn | None = None,
     retry_extractor: RetryExtractorFn | None = None,
     verifier: VerifierFn | None = None,
+    reconciliation_engine: ReconciliationEngine | None = None,
+    master_entities: Sequence[MasterEntityLike] | None = None,
+    master_entities_provider: MasterEntitiesProviderFn | None = None,
     config: AgentConfig | None = None,
 ) -> dict[str, Callable[[ContractAuditState], dict]]:
     """Khởi tạo các node kèm dependency injection để test dễ thay bằng mock."""
@@ -185,6 +208,7 @@ def build_nodes(
     extract_fn = extractor or _default_extractor
     retry_extract_fn = retry_extractor or _default_retry_extractor
     verify_fn = verifier or _default_verifier
+    engine = reconciliation_engine or ReconciliationEngine()
     cfg = config or AgentConfig.from_env()
 
     def parse_node(state: ContractAuditState) -> dict:
@@ -295,16 +319,55 @@ def build_nodes(
         }
 
     def reconcile_db_node(state: ContractAuditState) -> dict:
-        # Khung Tuần 4: chưa truy vấn PostgreSQL, chỉ gom các field NEEDS_HUMAN_REVIEW.
-        # Tuần 5 sẽ giữ phần collect_review_items này và bổ sung đối soát các field VERIFIED với master_entities.
-        audit_items = collect_review_items(state["verified_fields"])
+        # 1. Gom các trường cần người duyệt (không đạt kiểm chứng trích dẫn hoặc thiếu trường bắt buộc)
+        review_items = collect_review_items(state["verified_fields"])
+
+        # 2. Lấy danh sách master_entities để đối soát
+        if master_entities_provider is not None:
+            entities = master_entities_provider()
+        elif master_entities is not None:
+            entities = master_entities
+        else:
+            entities = _default_seed_master_entities()
+
+        # 3. Chạy engine đối soát thuần trên các trường VERIFIED
+        reconciled_items = engine.reconcile(
+            verified_fields=state["verified_fields"],
+            master_entities=entities,
+            existing_review_items=review_items,
+        )
+
+        # 4. Ghép kết quả không trùng lặp (tránh sinh trùng NEEDS_HUMAN_REVIEW cho cùng một field)
+        existing_signatures = {
+            (item.error_type, item.field_name) for item in review_items
+        }
+        all_audit_items = list(review_items)
+        for item in reconciled_items:
+            sig = (item.error_type, item.field_name)
+            if sig not in existing_signatures:
+                all_audit_items.append(item)
+                existing_signatures.add(sig)
+
+        discrepancy_count = sum(1 for item in all_audit_items if item.error_type in DISCREPANCY_ERROR_TYPES)
+        review_count = sum(1 for item in all_audit_items if item.error_type == "NEEDS_HUMAN_REVIEW")
+
+        summary = (
+            f"Đối soát với {len(entities)} đối tác: "
+            f"{discrepancy_count} sai lệch, {review_count} cần review"
+        )
+        decision = (
+            "phát hiện sai lệch -> generate_report_node"
+            if discrepancy_count > 0
+            else ("cần kiểm tra thủ công -> generate_report_node" if review_count > 0 else "hợp lệ -> generate_report_node")
+        )
+
         return {
-            "audit_items": audit_items,
+            "audit_items": all_audit_items,
             "trace_log": [
                 _make_trace_entry(
                     node="reconcile_db_node",
-                    summary=f"Khung đối soát (chưa nối DB): {len(audit_items)} mục NEEDS_HUMAN_REVIEW",
-                    decision="next: generate_report_node",
+                    summary=summary,
+                    decision=decision,
                 )
             ],
         }

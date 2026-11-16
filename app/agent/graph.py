@@ -1,5 +1,6 @@
 """Lắp ráp LangGraph StateGraph cho quy trình thẩm định hợp đồng."""
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -9,12 +10,14 @@ from app.agent.nodes import (
     FAILED_VERIFY_STATUSES,
     AgentConfig,
     ExtractorFn,
+    MasterEntitiesProviderFn,
     ParserFn,
     RetryExtractorFn,
     VerifierFn,
     build_nodes,
 )
 from app.agent.state import ContractAuditState
+from app.reconciliation.engine import MasterEntityLike, ReconciliationEngine
 
 
 def make_initial_state(file_path: str | Path, contract_id: int = 0) -> ContractAuditState:
@@ -39,6 +42,9 @@ def build_contract_audit_graph(
     extractor: ExtractorFn | None = None,
     retry_extractor: RetryExtractorFn | None = None,
     verifier: VerifierFn | None = None,
+    reconciliation_engine: ReconciliationEngine | None = None,
+    master_entities: Sequence[MasterEntityLike] | None = None,
+    master_entities_provider: MasterEntitiesProviderFn | None = None,
     config: AgentConfig | None = None,
 ):
     """Dựng và compile StateGraph đúng luồng và luật rẽ nhánh ở mục 7 của AGENTS.md."""
@@ -48,6 +54,9 @@ def build_contract_audit_graph(
         extractor=extractor,
         retry_extractor=retry_extractor,
         verifier=verifier,
+        reconciliation_engine=reconciliation_engine,
+        master_entities=master_entities,
+        master_entities_provider=master_entities_provider,
         config=cfg,
     )
 
