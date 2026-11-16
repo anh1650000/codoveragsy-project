@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.agent.graph import build_contract_audit_graph, make_initial_state
+from app.agent.nodes import AgentConfig
 from app.extraction.extractor import ExtractionError, _clean_json_text, extract_fields
 from app.extraction.schema import FieldStatus, RawExtraction, VerifiedField
 from app.guardrails.citation_verifier import CitationVerifier
@@ -409,7 +411,9 @@ def run_live_baseline() -> Path:
     run_dir = RUNS_DIR / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
     contract_paths = sorted(
-        path for path in CONTRACTS_DIR.iterdir() if path.suffix.lower() in {".pdf", ".docx"}
+        path
+        for path in CONTRACTS_DIR.iterdir()
+        if path.suffix.lower() in {".pdf", ".docx"} and (GROUND_TRUTH_DIR / f"{path.name}.json").exists()
     )
     if not contract_paths:
         raise FileNotFoundError(f"Không có PDF/DOCX trong {CONTRACTS_DIR}")
@@ -446,8 +450,143 @@ def run_live_baseline() -> Path:
     return run_dir
 
 
+def run_audit_evaluation(
+    target_run_dir: Path | None = None,
+    live: bool = False,
+    limit: int | None = None,
+) -> None:
+    """Chạy LangGraph pipeline end-to-end trên toàn bộ tập dev và so sánh với Ground Truth."""
+    contract_paths = sorted(
+        path
+        for path in CONTRACTS_DIR.iterdir()
+        if path.suffix.lower() in {".pdf", ".docx"} and (GROUND_TRUTH_DIR / f"{path.name}.json").exists()
+    )
+    if limit is not None and limit > 0:
+        contract_paths = contract_paths[:limit]
+
+    if not live:
+        run_dir = target_run_dir or find_latest_run_dir()
+        raw_dir = run_dir / "raw"
+        print(f"\n=== Chạy ĐỐI SOÁT END-TO-END (Chế độ Replay từ {run_dir.name}) ===")
+    else:
+        print("\n=== Chạy ĐỐI SOÁT END-TO-END (Chế độ Live Model) ===")
+
+    records = []
+    cfg = AgentConfig(enable_verifier=True, enable_retry=live)
+
+    for contract_path in contract_paths:
+        truth = load_ground_truth(contract_path.name)
+        expected_overall = truth.get("expected_overall_result")
+        expected_errors = sorted(truth.get("expected_audit_error_types", []))
+        scenario = truth.get("scenario", "UNKNOWN")
+
+        if not live:
+            raw_file = raw_dir / f"{contract_path.name}.json"
+            if not raw_file.exists():
+                print(f"Bỏ qua {contract_path.name}: không tìm thấy output thô {raw_file.name}")
+                continue
+            raw_extraction = _load_raw_extraction_from_file(raw_file)
+            graph = build_contract_audit_graph(
+                extractor=lambda chunks: raw_extraction,
+                config=cfg,
+            )
+        else:
+            graph = build_contract_audit_graph(config=cfg)
+
+        initial_state = make_initial_state(contract_path)
+        final_state = graph.invoke(initial_state)
+
+        actual_overall = final_state.get("overall_result")
+        actual_audit_items = final_state.get("audit_items", [])
+        all_actual_error_types = sorted(list({item.error_type for item in actual_audit_items}))
+
+        is_perfect = (actual_overall == expected_overall) and (set(all_actual_error_types) == set(expected_errors))
+
+        # Phân tích nguyên nhân nếu lệch
+        mismatch_diagnosis = None
+        if not is_perfect:
+            diag_parts = []
+            extracted_raw = final_state.get("raw_extraction")
+            verified = {vf.name: vf for vf in final_state.get("verified_fields", [])}
+
+            exp_tax = truth["fields"].get("party_b_tax_code")
+            act_tax = getattr(extracted_raw, "party_b_tax_code", None) if extracted_raw else None
+            act_tax_val = act_tax.value if act_tax else None
+            if exp_tax and normalize_tax_code(exp_tax) != normalize_tax_code(act_tax_val or ""):
+                diag_parts.append(f"Extraction sai party_b_tax_code (kỳ vọng '{exp_tax}', LLM trả '{act_tax_val}')")
+            elif verified.get("party_b_tax_code") and verified["party_b_tax_code"].status != FieldStatus.VERIFIED and exp_tax is not None:
+                diag_parts.append(f"Verifier đánh rớt party_b_tax_code ({verified['party_b_tax_code'].status.value})")
+
+            exp_name = truth["fields"].get("party_b_name")
+            act_name = getattr(extracted_raw, "party_b_name", None) if extracted_raw else None
+            act_name_val = act_name.value if act_name else None
+            if exp_name and normalize_company_name(exp_name) != normalize_company_name(act_name_val or ""):
+                diag_parts.append(f"Extraction sai party_b_name (kỳ vọng '{exp_name}', LLM trả '{act_name_val}')")
+
+            exp_val = truth["fields"].get("contract_value")
+            act_val = getattr(extracted_raw, "contract_value", None) if extracted_raw else None
+            act_val_val = act_val.value if act_val else None
+            if exp_val and parse_vnd(str(exp_val)) != parse_vnd(act_val_val or ""):
+                diag_parts.append(f"Extraction sai contract_value (kỳ vọng '{exp_val}', LLM trả '{act_val_val}')")
+
+            if not diag_parts:
+                diag_parts.append(f"Lỗi logic đối soát (Thực tế: {all_actual_error_types} vs Kỳ vọng: {expected_errors})")
+
+            mismatch_diagnosis = "; ".join(diag_parts)
+
+        records.append({
+            "file": contract_path.name,
+            "scenario": scenario,
+            "actual_overall": actual_overall,
+            "expected_overall": expected_overall,
+            "actual_errors": all_actual_error_types,
+            "expected_errors": expected_errors,
+            "is_perfect": is_perfect,
+            "diagnosis": mismatch_diagnosis,
+            "audit_items": actual_audit_items,
+        })
+
+    # In bảng kết quả
+    print("\n" + "=" * 125)
+    print(f"{'File':<15} | {'Scenario':<22} | {'Overall (Thực tế / Kỳ vọng)':<28} | {'Errors (Thực tế vs Kỳ vọng)':<40} | {'Kết quả':<7}")
+    print("-" * 125)
+    perfect_count = 0
+    for r in records:
+        overall_text = f"{r['actual_overall']} / {r['expected_overall']}"
+        actual_err_str = ",".join(r["actual_errors"]) or "[]"
+        exp_err_str = ",".join(r["expected_errors"]) or "[]"
+        err_text = f"{actual_err_str} vs {exp_err_str}"
+        tag = "[KHỚP]" if r["is_perfect"] else "[LỆCH]"
+        if r["is_perfect"]:
+            perfect_count += 1
+        print(f"{r['file']:<15} | {r['scenario']:<22} | {overall_text:<28} | {err_text:<40} | {tag:<7}")
+    print("=" * 125)
+    total = len(records)
+    ratio = (perfect_count / total * 100) if total else 0
+    print(f"TỔNG KẾT: {perfect_count}/{total} hợp đồng khớp hoàn hảo ({ratio:.1f}%)\n")
+
+    mismatches = [r for r in records if not r["is_perfect"]]
+    if mismatches:
+        print("CHI TIẾT PHÂN TÍCH NGUYÊN NHÂN CÁC CA LỆCH:")
+        for r in mismatches:
+            print(f"- {r['file']} ({r['scenario']}):")
+            print(f"  + Thực tế: overall={r['actual_overall']}, errors={r['actual_errors']}")
+            print(f"  + Kỳ vọng: overall={r['expected_overall']}, errors={r['expected_errors']}")
+            print(f"  + Phân tích nguyên nhân: {r['diagnosis']}")
+            for item in r["audit_items"]:
+                print(f"    * [{item.error_type}] {item.field_name}: {item.detail}")
+    else:
+        print("Tất cả các ca đều khớp hoàn toàn với Ground Truth!")
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Đánh giá extraction và CitationVerifier.")
+    parser = argparse.ArgumentParser(description="Đánh giá extraction, CitationVerifier và Reconciliation.")
+    parser.add_argument(
+        "--mode",
+        choices=["baseline", "verifier", "audit"],
+        default="audit",
+        help="Chế độ đánh giá: baseline (Tuần 2), verifier (Tuần 3), audit (Tuần 5 - đối soát end-to-end).",
+    )
     parser.add_argument(
         "--run-dir",
         type=Path,
@@ -463,22 +602,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--live",
         action="store_true",
-        help="Gọi lại LLM trên tập hợp đồng trước khi chạy CitationVerifier.",
+        help="Gọi model LLM thật thay vì dùng output thô đã lưu.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Giới hạn số file xử lý khi chạy live (mặc định: tất cả).",
     )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    if args.live:
-        target_run_dir = run_live_baseline()
-    else:
-        target_run_dir = args.run_dir if args.run_dir is not None else find_latest_run_dir()
-        if not target_run_dir.is_absolute():
-            target_run_dir = ROOT / target_run_dir
+    if args.mode == "baseline":
+        run_live_baseline()
+        return
 
-    report = evaluate_verifier_on_run(target_run_dir, threshold=args.threshold)
-    print_verifier_report(report)
+    target_run_dir = args.run_dir if args.run_dir is not None else find_latest_run_dir()
+    if not target_run_dir.is_absolute():
+        target_run_dir = ROOT / target_run_dir
+
+    if args.mode == "verifier":
+        report = evaluate_verifier_on_run(target_run_dir, threshold=args.threshold)
+        print_verifier_report(report)
+    elif args.mode == "audit":
+        run_audit_evaluation(target_run_dir=target_run_dir, live=args.live, limit=args.limit)
 
 
 if __name__ == "__main__":
