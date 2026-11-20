@@ -1,20 +1,113 @@
-﻿services:
+services:
   postgres:
     image: postgres:16
     container_name: contract-audit-postgres
     environment:
-      POSTGRES_DB: contracts
-      POSTGRES_USER: contracts
-      POSTGRES_PASSWORD: contracts
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U contracts -d contracts"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
+  # Khởi tạo schema và seed dữ liệu mẫu theo kiểu idempotent trước khi API nhận request
+  db-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: contract-audit-db-init
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL}
+    command: ["python", "-m", "app.db.seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: contract-audit-api
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL}
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL}
+      UPLOAD_DIR: ${DOCKER_UPLOAD_DIR}
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads_data:/app/data/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ui
+    container_name: contract-audit-ui
+    env_file:
+      - .env
+    environment:
+      API_BASE_URL: ${DOCKER_API_BASE_URL}
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # Tuỳ chọn chạy Ollama trong Docker bằng: docker compose --profile ollama up
+  # Khi dùng profile này, hãy đổi DOCKER_LLM_BASE_URL trong .env sang http://ollama:11434/v1
+  # và pull model bên trong container: docker compose exec ollama ollama pull frob/qwen3.5-instruct:4b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: contract-audit-ollama
+    profiles: ["ollama"]
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Ví dụ bật GPU NVIDIA trên Linux/Docker Desktop (không bật mặc định để chạy được trên mọi máy):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
 volumes:
   postgres_data:
+  uploads_data:
+  ollama_data:
