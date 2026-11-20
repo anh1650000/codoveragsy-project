@@ -11,7 +11,9 @@ data/uploads/
 data/ollama/
 data/runs/
 data/test_tmp/
+data/contracts/contract_00*.pdf
 *.log
 WEEKLY_PROMPTS.md
 README_w1.md
 AGENTS.md
+docs/ROADMAP.md
