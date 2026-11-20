@@ -10,6 +10,11 @@ from sqlalchemy.orm import selectinload
 from app.db.models import AuditLog, Contract, ContractEntity, MasterEntity
 
 
+def _utc_now_naive() -> datetime:
+    """Trả về thời gian UTC dạng naive để khớp cột TIMESTAMP WITHOUT TIME ZONE trong PostgreSQL."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class ContractRepository:
     """Các thao tác bất đồng bộ trên các bảng contracts, contract_entities và audit_logs."""
 
@@ -22,7 +27,7 @@ class ContractRepository:
             file_name=file_name,
             file_path=file_path,
             status="UPLOADED",
-            created_at=datetime.now(timezone.utc),
+            created_at=_utc_now_naive(),
         )
         self.session.add(contract)
         await self.session.commit()
@@ -95,7 +100,7 @@ class ContractRepository:
         if error_message is not None:
             contract.error_message = error_message
         if status in {"DONE", "FAILED"}:
-            contract.completed_at = datetime.now(timezone.utc)
+            contract.completed_at = _utc_now_naive()
         await self.session.commit()
         await self.session.refresh(contract)
         return contract
@@ -143,7 +148,7 @@ class ContractRepository:
             contract_id=contract_id,
             fields=verified_fields,
             retry_count=retry_count,
-            created_at=datetime.now(timezone.utc),
+            created_at=_utc_now_naive(),
         )
         self.session.add(contract_entity)
 
@@ -156,7 +161,7 @@ class ContractRepository:
                 extracted_value=item.get("extracted_value"),
                 expected_value=item.get("expected_value"),
                 detail=item.get("detail"),
-                created_at=datetime.now(timezone.utc),
+                created_at=_utc_now_naive(),
             )
             self.session.add(audit_log)
 
@@ -165,7 +170,7 @@ class ContractRepository:
         contract.overall_result = overall_result
         contract.error_message = error_message
         contract.trace_log = trace_log
-        contract.completed_at = datetime.now(timezone.utc)
+        contract.completed_at = _utc_now_naive()
 
         await self.session.commit()
         await self.session.refresh(contract)
